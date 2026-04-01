@@ -2,14 +2,15 @@
 """NJPW シングルマッチ結果スクレイパー
 
 Usage:
-    python scraper.py <URL> [--db FILE]
+    python scripts/njpw_scraper.py YYYYMM [--db FILE]
 
 Example:
-    python scraper.py https://www.njpw.co.jp/tournament/result/624064
+    python scripts/njpw_scraper.py 202603
 """
 
 import argparse
 import json
+import os
 import re
 import sqlite3
 import urllib.request
@@ -18,6 +19,9 @@ from urllib.error import URLError
 
 API_BASE = "https://app.njpw.co.jp/tournament"
 CALENDAR_BASE = "https://app.njpw.co.jp/event-calendar"
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_DB = os.path.join(_PROJECT_ROOT, "njpw.db")
 
 
 def fetch_event_ids_for_month(yyyymm: str) -> list:
@@ -30,12 +34,6 @@ def fetch_event_ids_for_month(yyyymm: str) -> list:
         if e.get("category_name") == "Match" and e.get("fought") == 1
     ]
 
-
-def extract_event_id(url: str) -> str:
-    m = re.search(r'/(\d+)/?$', url.rstrip('/'))
-    if not m:
-        raise ValueError(f"URLからイベントIDを取得できません: {url}")
-    return m.group(1)
 
 
 def fetch_json(url: str) -> dict:
@@ -59,7 +57,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             date       TEXT,
             prefecture TEXT,
             arena      TEXT,
-            spectators TEXT
+            spectators INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS matches (
@@ -121,6 +119,15 @@ def parse_time_seconds(time_str: str) -> int:
     return 0
 
 
+def _parse_spectators(value) -> int | None:
+    if value is None:
+        return None
+    m = re.search(r'[\d,]+', str(value))
+    if not m:
+        return None
+    return int(m.group().replace(",", ""))
+
+
 def parse_event_info(posts_data: dict) -> dict:
     date_raw = posts_data.get("event_start_date", "")
     date = date_raw[:10] if date_raw else ""
@@ -138,7 +145,7 @@ def parse_event_info(posts_data: dict) -> dict:
         "date": date,
         "prefecture": prefecture,
         "arena": arena,
-        "spectators": posts_data.get("spectators", ""),
+        "spectators": _parse_spectators(posts_data.get("spectators")),
     }
 
 
@@ -187,23 +194,17 @@ def process_event(event_id: str, conn: sqlite3.Connection) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="NJPW シングルマッチ結果をDBに保存")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("url", nargs="?", help="大会URL (例: https://www.njpw.co.jp/tournament/result/624064)")
-    group.add_argument("--month", metavar="YYYYMM", help="指定月の全試合結果を取得 (例: 202603)")
-    parser.add_argument("--db", default="njpw.db", help="SQLiteファイルパス (デフォルト: njpw.db)")
+    parser.add_argument("month", metavar="YYYYMM", help="対象年月 (例: 202603)")
+    parser.add_argument("--db", default=DEFAULT_DB, help=f"SQLiteファイルパス (デフォルト: {DEFAULT_DB})")
     args = parser.parse_args()
 
     with sqlite3.connect(args.db) as conn:
         init_db(conn)
 
-        if args.month:
-            print(f"{args.month} の試合結果済みイベントを取得中...")
-            event_ids = fetch_event_ids_for_month(args.month)
-            print(f"対象イベント数: {len(event_ids)}")
-            for event_id in event_ids:
-                process_event(event_id, conn)
-        else:
-            event_id = extract_event_id(args.url)
+        print(f"{args.month} の試合結果済みイベントを取得中...")
+        event_ids = fetch_event_ids_for_month(args.month)
+        print(f"対象イベント数: {len(event_ids)}")
+        for event_id in event_ids:
             process_event(event_id, conn)
 
     print(f"\nDB保存完了: {args.db}")
