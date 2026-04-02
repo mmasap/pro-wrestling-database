@@ -74,6 +74,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             player_id INTEGER REFERENCES players(id),
             side      TEXT,
             is_winner INTEGER NOT NULL DEFAULT 0,
+            is_loser  INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (match_id, player_id)
         );
     """)
@@ -110,11 +111,11 @@ def upsert_match(conn: sqlite3.Connection, match: dict) -> None:
     )
 
 
-def upsert_match_participant(conn: sqlite3.Connection, match_id: int, player_id: int, side: str, is_winner: bool) -> None:
+def upsert_match_participant(conn: sqlite3.Connection, match_id: int, player_id: int, side: str, is_winner: bool, is_loser: bool) -> None:
     conn.execute(
-        """INSERT OR REPLACE INTO match_participants (match_id, player_id, side, is_winner)
-           VALUES (?, ?, ?, ?)""",
-        (match_id, player_id, side, 1 if is_winner else 0),
+        """INSERT OR REPLACE INTO match_participants (match_id, player_id, side, is_winner, is_loser)
+           VALUES (?, ?, ?, ?, ?)""",
+        (match_id, player_id, side, 1 if is_winner else 0, 1 if is_loser else 0),
     )
 
 
@@ -168,6 +169,7 @@ def parse_event_info(posts_data: dict) -> dict:
 
 def parse_match_result(card: dict) -> dict:
     win_ids = set(str(p) for p in (card.get("wins_decision") or []))
+    lose_ids = set(str(p) for p in (card.get("loses_decision") or []))
 
     top_left = card.get("players_top_left_list") or []
     bottom_left = card.get("players_bottom_left_list") or []
@@ -184,6 +186,7 @@ def parse_match_result(card: dict) -> dict:
             "name": player["name"],
             "side": "left",
             "is_winner": str(player["id"]) in win_ids,
+            "is_loser": str(player["id"]) in lose_ids,
         })
     for player in right_team:
         participants.append({
@@ -191,6 +194,7 @@ def parse_match_result(card: dict) -> dict:
             "name": player["name"],
             "side": "right",
             "is_winner": str(player["id"]) in win_ids,
+            "is_loser": str(player["id"]) in lose_ids,
         })
 
     return {
@@ -216,10 +220,11 @@ def process_event(event_id: str, conn: sqlite3.Connection) -> None:
     print(f"  大会: {event['title']} ({event['date']})")
 
     cards = fetch_json(f"{API_BASE}/card_results/{event_id}.json")
-    print(f"  試合数: {len(cards)}")
+    match_cards = [c for c in cards if c.get("wins_decision")]
+    print(f"  試合数: {len(match_cards)}")
 
     upsert_event(conn, event)
-    for card in cards:
+    for card in match_cards:
         match = parse_match_result(card)
         upsert_match(conn, match)
 
@@ -228,7 +233,7 @@ def process_event(event_id: str, conn: sqlite3.Connection) -> None:
 
         for p in match["participants"]:
             upsert_player(conn, p["id"], p["name"])
-            upsert_match_participant(conn, match["id"], p["id"], p["side"], p["is_winner"])
+            upsert_match_participant(conn, match["id"], p["id"], p["side"], p["is_winner"], p["is_loser"])
 
         winner_str = _format_team(winners) if winners else "?"
         loser_str = _format_team(losers) if losers else "?"
