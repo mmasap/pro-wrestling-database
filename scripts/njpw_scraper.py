@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NJPW シングルマッチ結果スクレイパー
+"""NJPW 試合結果スクレイパー
 
 Usage:
     python scripts/njpw_scraper.py YYYYMM [--db FILE]
@@ -64,10 +64,17 @@ def init_db(conn: sqlite3.Connection) -> None:
             id           INTEGER PRIMARY KEY,
             event_id     INTEGER REFERENCES events(id),
             match_number TEXT,
-            winner_id    INTEGER REFERENCES players(id),
-            loser_id     INTEGER REFERENCES players(id),
+            match_type   TEXT,
             time_seconds INTEGER,
             finish       TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS match_participants (
+            match_id  INTEGER REFERENCES matches(id),
+            player_id INTEGER REFERENCES players(id),
+            side      TEXT,
+            is_winner INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (match_id, player_id)
         );
     """)
     conn.commit()
@@ -90,26 +97,25 @@ def upsert_event(conn: sqlite3.Connection, event: dict) -> None:
 def upsert_match(conn: sqlite3.Connection, match: dict) -> None:
     conn.execute(
         """INSERT OR REPLACE INTO matches
-           (id, event_id, match_number, winner_id, loser_id, time_seconds, finish)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+           (id, event_id, match_number, match_type, time_seconds, finish)
+           VALUES (?, ?, ?, ?, ?, ?)""",
         (
             match["id"],
             match["event_id"],
             match["match_number"],
-            match["winner_id"],
-            match["loser_id"],
+            match["match_type"],
             match["time_seconds"],
             match["finish"],
         ),
     )
 
 
-def is_single_match(card: dict) -> bool:
-    left = card.get("players_top_left_list") or []
-    right = card.get("players_top_right_list") or []
-    bottom_left = card.get("players_bottom_left_list") or []
-    bottom_right = card.get("players_bottom_right_list") or []
-    return len(left) == 1 and len(right) == 1 and not bottom_left and not bottom_right
+def upsert_match_participant(conn: sqlite3.Connection, match_id: int, player_id: int, side: str, is_winner: bool) -> None:
+    conn.execute(
+        """INSERT OR REPLACE INTO match_participants (match_id, player_id, side, is_winner)
+           VALUES (?, ?, ?, ?)""",
+        (match_id, player_id, side, 1 if is_winner else 0),
+    )
 
 
 def parse_time_seconds(time_str: str) -> int:
@@ -126,6 +132,17 @@ def _parse_spectators(value) -> int | None:
     if not m:
         return None
     return int(m.group().replace(",", ""))
+
+
+def determine_match_type(left_team: list, right_team: list) -> str:
+    count = max(len(left_team), len(right_team))
+    if count == 1:
+        return "singles"
+    if count == 2:
+        return "tag"
+    if count == 3:
+        return "6man_tag"
+    return f"{count * 2}man_tag"
 
 
 def parse_event_info(posts_data: dict) -> dict:
@@ -150,25 +167,45 @@ def parse_event_info(posts_data: dict) -> dict:
 
 
 def parse_match_result(card: dict) -> dict:
-    win_ids = set(card.get("wins_decision") or [])
-    left = card.get("players_top_left_list") or []
-    right = card.get("players_top_right_list") or []
+    win_ids = set(str(p) for p in (card.get("wins_decision") or []))
 
-    left_wins = any(str(p["id"]) in win_ids for p in left)
-    winner = left[0] if left_wins else right[0]
-    loser = right[0] if left_wins else left[0]
+    top_left = card.get("players_top_left_list") or []
+    bottom_left = card.get("players_bottom_left_list") or []
+    top_right = card.get("players_top_right_list") or []
+    bottom_right = card.get("players_bottom_right_list") or []
+
+    left_team = top_left + bottom_left
+    right_team = top_right + bottom_right
+
+    participants = []
+    for player in left_team:
+        participants.append({
+            "id": player["id"],
+            "name": player["name"],
+            "side": "left",
+            "is_winner": str(player["id"]) in win_ids,
+        })
+    for player in right_team:
+        participants.append({
+            "id": player["id"],
+            "name": player["name"],
+            "side": "right",
+            "is_winner": str(player["id"]) in win_ids,
+        })
 
     return {
         "id": card["post_id"],
         "event_id": card["tournament_post_id"],
         "match_number": card.get("result_title", ""),
-        "winner_id": winner["id"],
-        "winner_name": winner["name"],
-        "loser_id": loser["id"],
-        "loser_name": loser["name"],
+        "match_type": determine_match_type(left_team, right_team),
         "time_seconds": parse_time_seconds(card.get("time", "")),
         "finish": card.get("decided_technique", ""),
+        "participants": participants,
     }
+
+
+def _format_team(players: list) -> str:
+    return " & ".join(p["name"] for p in players)
 
 
 def process_event(event_id: str, conn: sqlite3.Connection) -> None:
@@ -179,21 +216,28 @@ def process_event(event_id: str, conn: sqlite3.Connection) -> None:
     print(f"  大会: {event['title']} ({event['date']})")
 
     cards = fetch_json(f"{API_BASE}/card_results/{event_id}.json")
-    singles = [c for c in cards if is_single_match(c)]
-    print(f"  シングルマッチ: {len(singles)}試合")
+    print(f"  試合数: {len(cards)}")
 
     upsert_event(conn, event)
-    for card in singles:
+    for card in cards:
         match = parse_match_result(card)
-        upsert_player(conn, match["winner_id"], match["winner_name"])
-        upsert_player(conn, match["loser_id"], match["loser_name"])
         upsert_match(conn, match)
-        print(f"    {match['match_number']}: {match['winner_name']} def. {match['loser_name']} ({match['finish']} {match['time_seconds']}秒)")
+
+        winners = [p for p in match["participants"] if p["is_winner"]]
+        losers = [p for p in match["participants"] if not p["is_winner"]]
+
+        for p in match["participants"]:
+            upsert_player(conn, p["id"], p["name"])
+            upsert_match_participant(conn, match["id"], p["id"], p["side"], p["is_winner"])
+
+        winner_str = _format_team(winners) if winners else "?"
+        loser_str = _format_team(losers) if losers else "?"
+        print(f"    [{match['match_type']}] {match['match_number']}: {winner_str} def. {loser_str} ({match['finish']} {match['time_seconds']}秒)")
     conn.commit()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="NJPW シングルマッチ結果をDBに保存")
+    parser = argparse.ArgumentParser(description="NJPW 試合結果をDBに保存")
     parser.add_argument("month", metavar="YYYYMM", help="対象年月 (例: 202603)")
     parser.add_argument("--db", default=DEFAULT_DB, help=f"SQLiteファイルパス (デフォルト: {DEFAULT_DB})")
     args = parser.parse_args()
