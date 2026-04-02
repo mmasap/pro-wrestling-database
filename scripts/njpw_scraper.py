@@ -136,7 +136,7 @@ def _parse_spectators(value) -> int | None:
 
 def determine_match_type(left_team: list, right_team: list) -> str:
     count = max(len(left_team), len(right_team))
-    if count == 1:
+    if count <= 1:
         return "singles"
     if count == 2:
         return "tag"
