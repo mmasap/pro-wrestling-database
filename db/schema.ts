@@ -10,7 +10,7 @@ export const organizations = sqliteTable("organizations", {
 	name: text("name").notNull().unique(),
 });
 
-export const players = sqliteTable("players", {
+export const wrestlers = sqliteTable("wrestlers", {
 	id: integer("id").primaryKey(),
 	organizationId: integer("organization_id")
 		.notNull()
@@ -59,10 +59,10 @@ export const matchParticipants = sqliteTable(
 	"match_participants",
 	{
 		matchId: integer("match_id").references(() => matches.id),
-		playerId: integer("player_id").references(() => players.id),
+		wrestlerId: integer("wrestler_id").references(() => wrestlers.id),
 		team: integer("team"),
 		isWinner: integer("is_winner").notNull().default(0),
 		isLoser: integer("is_loser").notNull().default(0),
 	},
-	(t) => [primaryKey({ columns: [t.matchId, t.playerId] })],
+	(t) => [primaryKey({ columns: [t.matchId, t.wrestlerId] })],
 );

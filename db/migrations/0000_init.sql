@@ -11,13 +11,13 @@ CREATE TABLE `events` (
 --> statement-breakpoint
 CREATE TABLE `match_participants` (
 	`match_id` integer,
-	`player_id` integer,
+	`wrestler_id` integer,
 	`team` integer,
 	`is_winner` integer DEFAULT 0 NOT NULL,
 	`is_loser` integer DEFAULT 0 NOT NULL,
-	PRIMARY KEY(`match_id`, `player_id`),
+	PRIMARY KEY(`match_id`, `wrestler_id`),
 	FOREIGN KEY (`match_id`) REFERENCES `matches`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`player_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`wrestler_id`) REFERENCES `wrestlers`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE TABLE `match_titles` (
@@ -43,7 +43,7 @@ CREATE TABLE `organizations` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `organizations_name_unique` ON `organizations` (`name`);--> statement-breakpoint
-CREATE TABLE `players` (
+CREATE TABLE `wrestlers` (
 	`id` integer PRIMARY KEY NOT NULL,
 	`organization_id` integer NOT NULL,
 	`name` text NOT NULL,

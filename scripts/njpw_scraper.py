@@ -44,10 +44,10 @@ def fetch_json(url: str) -> dict:
 
 
 
-def upsert_player(conn: sqlite3.Connection, player_id: int, name: str, organization_id: int) -> None:
+def upsert_wrestler(conn: sqlite3.Connection, wrestler_id: int, name: str, organization_id: int) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO players (id, name, organization_id) VALUES (?, ?, ?)",
-        (player_id, name, organization_id),
+        "INSERT OR REPLACE INTO wrestlers (id, name, organization_id) VALUES (?, ?, ?)",
+        (wrestler_id, name, organization_id),
     )
 
 
@@ -90,11 +90,11 @@ def upsert_match_titles(conn: sqlite3.Connection, match_id: int, title_ids: list
         )
 
 
-def upsert_match_participant(conn: sqlite3.Connection, match_id: int, player_id: int, team: int, is_winner: bool, is_loser: bool) -> None:
+def upsert_match_participant(conn: sqlite3.Connection, match_id: int, wrestler_id: int, team: int, is_winner: bool, is_loser: bool) -> None:
     conn.execute(
-        """INSERT OR REPLACE INTO match_participants (match_id, player_id, team, is_winner, is_loser)
+        """INSERT OR REPLACE INTO match_participants (match_id, wrestler_id, team, is_winner, is_loser)
            VALUES (?, ?, ?, ?, ?)""",
-        (match_id, player_id, team, 1 if is_winner else 0, 1 if is_loser else 0),
+        (match_id, wrestler_id, team, 1 if is_winner else 0, 1 if is_loser else 0),
     )
 
 
@@ -237,7 +237,7 @@ def process_event(event_id: str, conn: sqlite3.Connection, organization_id: int)
         losers = [p for p in match["participants"] if not p["is_winner"]]
 
         for p in match["participants"]:
-            upsert_player(conn, p["id"], p["name"], organization_id)
+            upsert_wrestler(conn, p["id"], p["name"], organization_id)
             upsert_match_participant(conn, match["id"], p["id"], p["team"], p["is_winner"], p["is_loser"])
 
         winner_str = _format_team(winners) if winners else "?"
