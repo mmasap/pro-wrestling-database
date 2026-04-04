@@ -103,7 +103,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 							<tr className="border-b bg-gray-100 text-left text-gray-700">
 								<th className="px-3 py-2">日付</th>
 								<th className="px-3 py-2">大会</th>
-								<th className="px-3 py-2 whitespace-nowrap">結果</th>
+								<th className="px-3 py-2 whitespace-nowrap text-center">勝敗</th>
 								<th className="px-3 py-2">対戦カード</th>
 								<th className="px-3 py-2">フィニッシュ</th>
 							</tr>
@@ -155,7 +155,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 									<tr key={m.matchId} className={`border-b text-gray-900 ${rowBg}`}>
 										<td className="px-3 py-2 whitespace-nowrap">{m.date}</td>
 										<td className="max-w-64 px-3 py-2">{m.eventName}</td>
-										<td className="px-3 py-2">
+										<td className="px-3 py-2 text-center">
 											<span className={`inline-block w-6 rounded py-0.5 text-center text-xs font-bold ${badgeClass}`}>
 												{resultLabel}
 											</span>
