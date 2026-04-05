@@ -2,6 +2,7 @@ import {
 	isRouteErrorResponse,
 	Links,
 	Meta,
+	NavLink,
 	Outlet,
 	Scripts,
 	ScrollRestoration,
@@ -42,7 +43,32 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-	return <Outlet />;
+	return (
+		<>
+			<header className="border-b bg-white shadow-sm">
+				<nav className="mx-auto flex max-w-7xl gap-6 px-6 py-3">
+					<NavLink
+						to="/"
+						end
+						className={({ isActive }) =>
+							`font-semibold hover:text-blue-600 ${isActive ? "text-blue-600" : "text-gray-700"}`
+						}
+					>
+						レスラー
+					</NavLink>
+					<NavLink
+						to="/titles"
+						className={({ isActive }) =>
+							`font-semibold hover:text-blue-600 ${isActive ? "text-blue-600" : "text-gray-700"}`
+						}
+					>
+						タイトル履歴
+					</NavLink>
+				</nav>
+			</header>
+			<Outlet />
+		</>
+	);
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
