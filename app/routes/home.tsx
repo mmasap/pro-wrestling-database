@@ -1,5 +1,21 @@
 import { useEffect, useState } from "react";
 import { Form, useSubmit } from "react-router";
+import { Badge } from "~/components/ui/badge";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "~/components/ui/select";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "~/components/ui/table";
 import {
 	getWrestlerRecord,
 	getWrestlers,
@@ -44,47 +60,51 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 		setWrestlerId(record?.wrestler?.id?.toString() ?? "");
 	}, [record?.wrestler?.id]);
 
-	function handleChange(
-		e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>,
-	) {
-		const form = e.currentTarget.form;
-		if (form) submit(form);
+	function submitForm(newWrestlerId: string, newMatchType: string) {
+		const params = new URLSearchParams();
+		if (newWrestlerId) params.set("wrestlerId", newWrestlerId);
+		params.set("matchType", newMatchType);
+		submit(params, { method: "get" });
 	}
 
 	return (
 		<div className="mx-auto max-w-7xl p-6">
-			<h1 className="mb-6 text-2xl font-bold">Pro Wrestling Database</h1>
+			<h1 className="mb-6 text-2xl font-bold">レスラー成績</h1>
 
-			<Form method="get" className="mb-6 flex flex-wrap gap-4">
-				<select
-					name="wrestlerId"
+			<Form method="get" className="mb-6 flex flex-wrap items-center gap-4">
+				<Select
 					value={wrestlerId}
-					onChange={(e) => {
-						setWrestlerId(e.target.value);
-						handleChange(e);
+					onValueChange={(val) => {
+						setWrestlerId(val);
+						submitForm(val, matchType);
 					}}
-					className="rounded border px-3 py-2"
 				>
-					<option value="">レスラーを選択</option>
-					{wrestlerList.map((w) => (
-						<option key={w.id} value={w.id}>
-							{w.name}
-						</option>
-					))}
-				</select>
+					<SelectTrigger className="w-48">
+						<SelectValue placeholder="レスラーを選択" />
+					</SelectTrigger>
+					<SelectContent>
+						{wrestlerList.map((w) => (
+							<SelectItem key={w.id} value={w.id.toString()}>
+								{w.name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 
-				<div className="flex gap-2">
+				<div className="flex gap-1 rounded-lg border p-1">
 					{MATCH_TYPES.map((t) => (
-						<label key={t.value} className="flex items-center gap-1">
-							<input
-								type="radio"
-								name="matchType"
-								value={t.value}
-								defaultChecked={matchType === t.value}
-								onChange={handleChange}
-							/>
+						<button
+							key={t.value}
+							type="button"
+							onClick={() => submitForm(wrestlerId, t.value)}
+							className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
+								matchType === t.value
+									? "bg-primary text-primary-foreground"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+						>
 							{t.label}
-						</label>
+						</button>
 					))}
 				</div>
 			</Form>
@@ -93,26 +113,33 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 				<>
 					<div className="mb-4">
 						<h2 className="text-xl font-semibold">{record.wrestler?.name}</h2>
-						<p className="text-gray-600">
+						<p className="text-muted-foreground text-sm">
 							{record.wins}勝 {record.losses}敗
 						</p>
 					</div>
 
-					<table className="w-full border-collapse text-sm ">
-						<thead>
-							<tr className="border-b bg-gray-100 text-left text-gray-700">
-								<th className="px-3 py-2">日付</th>
-								<th className="px-3 py-2">大会</th>
-								<th className="px-3 py-2 whitespace-nowrap text-center">勝敗</th>
-								<th className="px-3 py-2">対戦カード</th>
-								<th className="px-3 py-2">フィニッシュ</th>
-							</tr>
-						</thead>
-						<tbody>
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>日付</TableHead>
+								<TableHead>大会</TableHead>
+								<TableHead className="text-center">勝敗</TableHead>
+								<TableHead>対戦カード</TableHead>
+								<TableHead>フィニッシュ</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
 							{record.matches.map((m) => {
-								const myTeamNames = [record.wrestler?.name ?? "", ...m.partners];
-								const opponentTeams = m.opponentTeams;
+								const myTeamNames = [
+									record.wrestler?.name ?? "",
+									...m.partners,
+								];
 								const resultLabel = m.isWinner ? "勝" : m.isLoser ? "負" : "-";
+								const badgeVariant = m.isWinner
+									? "default"
+									: m.isLoser
+										? "secondary"
+										: "outline";
 
 								function renderName(name: string) {
 									const isWinner = name === m.fallWinner;
@@ -136,54 +163,64 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 								function renderTeam(names: string[]) {
 									return names.map((name, i) => (
 										<span key={name}>
-											{i > 0 && <span className="text-gray-500"> & </span>}
+											{i > 0 && (
+												<span className="text-muted-foreground"> & </span>
+											)}
 											{renderName(name)}
 										</span>
 									));
 								}
-								const rowBg = m.isWinner
-									? "bg-red-50"
-									: m.isLoser
-										? "bg-blue-50"
-										: "bg-white";
-								const badgeClass = m.isWinner
-									? "bg-red-600 text-white"
-									: m.isLoser
-										? "bg-blue-600 text-white"
-										: "bg-gray-400 text-white";
+
 								return (
-									<tr key={m.matchId} className={`border-b text-gray-900 ${rowBg}`}>
-										<td className="px-3 py-2 whitespace-nowrap">{m.date}</td>
-										<td className="max-w-64 px-3 py-2">{m.eventName}</td>
-										<td className="px-3 py-2 text-center">
-											<span className={`inline-block w-6 rounded py-0.5 text-center text-xs font-bold ${badgeClass}`}>
+									<TableRow key={m.matchId}>
+										<TableCell className="whitespace-nowrap">
+											{m.date}
+										</TableCell>
+										<TableCell className="max-w-48 whitespace-normal">{m.eventName}</TableCell>
+										<TableCell className="text-center">
+											<Badge
+												variant={badgeVariant}
+												className={
+													m.isWinner
+														? "bg-red-600 text-white hover:bg-red-600"
+														: m.isLoser
+															? "bg-blue-600 text-white hover:bg-blue-600"
+															: ""
+												}
+											>
 												{resultLabel}
-											</span>
-										</td>
-										<td className="px-3 py-2">
+											</Badge>
+										</TableCell>
+										<TableCell>
 											{m.titleNames.length > 0 && (
 												<div className="mb-1 flex flex-wrap gap-1">
 													{m.titleNames.map((t) => (
-														<span key={t} className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs font-semibold text-yellow-800">
+														<Badge
+															key={t}
+															variant="outline"
+															className="border-yellow-400 bg-yellow-50 text-yellow-800"
+														>
 															{t}
-														</span>
+														</Badge>
 													))}
 												</div>
 											)}
 											<div>{renderTeam(myTeamNames)}</div>
-											{opponentTeams.map((team) => (
+											{m.opponentTeams.map((team) => (
 												<div key={team.join(",")}>
-													<div className="my-0.5 text-xs text-gray-400">vs</div>
+													<div className="text-muted-foreground my-0.5 text-xs">
+														vs
+													</div>
 													<div>{renderTeam(team)}</div>
 												</div>
 											))}
-										</td>
-										<td className="px-3 py-2">{m.finish}</td>
-									</tr>
+										</TableCell>
+										<TableCell>{m.finish}</TableCell>
+									</TableRow>
 								);
 							})}
-						</tbody>
-					</table>
+						</TableBody>
+					</Table>
 				</>
 			)}
 		</div>

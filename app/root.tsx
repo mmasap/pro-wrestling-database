@@ -45,13 +45,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
 	return (
 		<>
-			<header className="border-b bg-white shadow-sm">
-				<nav className="mx-auto flex max-w-7xl gap-6 px-6 py-3">
+			<header className="border-b bg-background">
+				<nav className="mx-auto flex max-w-7xl items-center gap-1 px-6 py-2">
+					<span className="mr-4 text-sm font-bold tracking-tight">
+						Pro Wrestling Database
+					</span>
 					<NavLink
 						to="/"
 						end
 						className={({ isActive }) =>
-							`font-semibold hover:text-blue-600 ${isActive ? "text-blue-600" : "text-gray-700"}`
+							`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+								isActive
+									? "bg-muted text-foreground"
+									: "text-muted-foreground hover:bg-muted hover:text-foreground"
+							}`
 						}
 					>
 						レスラー
@@ -59,7 +66,11 @@ export default function App() {
 					<NavLink
 						to="/titles"
 						className={({ isActive }) =>
-							`font-semibold hover:text-blue-600 ${isActive ? "text-blue-600" : "text-gray-700"}`
+							`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+								isActive
+									? "bg-muted text-foreground"
+									: "text-muted-foreground hover:bg-muted hover:text-foreground"
+							}`
 						}
 					>
 						タイトル履歴
