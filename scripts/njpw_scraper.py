@@ -253,9 +253,9 @@ def main() -> None:
     args = parser.parse_args()
 
     with sqlite3.connect(args.db) as conn:
-        organization_id = conn.execute(
+        organization_id = str(conn.execute(
             "SELECT id FROM organizations WHERE name = '新日本プロレス'"
-        ).fetchone()[0]
+        ).fetchone()[0])
 
         print(f"{args.month} の試合結果済みイベントを取得中...")
         event_ids = fetch_event_ids_for_month(args.month)

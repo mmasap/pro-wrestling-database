@@ -8,6 +8,7 @@
 		"start": "react-router-serve ./build/server/index.js",
 		"typecheck": "react-router typegen && tsc",
 		"db:migrate": "npx drizzle-kit migrate",
+		"db:seed": "node --env-file=.env --import tsx/esm db/seed.ts",
 		"lint": "biome lint .",
 		"format": "biome format --write .",
 		"check": "biome check --write ."

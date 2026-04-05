@@ -6,21 +6,28 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 export const organizations = sqliteTable("organizations", {
-	id: integer("id").primaryKey(),
+	id: text("id").primaryKey(),
 	name: text("name").notNull().unique(),
 });
 
 export const wrestlers = sqliteTable("wrestlers", {
 	id: integer("id").primaryKey(),
-	organizationId: integer("organization_id")
+	organizationId: text("organization_id")
 		.notNull()
 		.references(() => organizations.id),
 	name: text("name").notNull(),
+	nameKana: text("name_kana").notNull(),
+	birthday: text("birthday"),
+	birthplace: text("birthplace"),
+	debut: text("debut"),
+	height: integer("height"),
+	weight: integer("weight"),
+	themeMusic: text("theme_music"),
 });
 
 export const events = sqliteTable("events", {
 	id: integer("id").primaryKey(),
-	organizationId: integer("organization_id")
+	organizationId: text("organization_id")
 		.notNull()
 		.references(() => organizations.id),
 	name: text("name"),
@@ -31,8 +38,8 @@ export const events = sqliteTable("events", {
 });
 
 export const titles = sqliteTable("titles", {
-	id: integer("id").primaryKey(),
-	organizationId: integer("organization_id")
+	id: text("id").primaryKey(),
+	organizationId: text("organization_id")
 		.notNull()
 		.references(() => organizations.id),
 	name: text("name").notNull().unique(),
@@ -50,7 +57,7 @@ export const matchTitles = sqliteTable(
 	"match_titles",
 	{
 		matchId: integer("match_id").references(() => matches.id),
-		titleId: integer("title_id").references(() => titles.id),
+		titleId: text("title_id").references(() => titles.id),
 	},
 	(t) => [primaryKey({ columns: [t.matchId, t.titleId] })],
 );
@@ -65,4 +72,23 @@ export const matchParticipants = sqliteTable(
 		isLoser: integer("is_loser").notNull().default(0),
 	},
 	(t) => [primaryKey({ columns: [t.matchId, t.wrestlerId] })],
+);
+
+export const units = sqliteTable("units", {
+	id: text("id").primaryKey(),
+	organizationId: text("organization_id"),
+	name: text("name").notNull(),
+});
+
+export const wrestlerUnits = sqliteTable(
+	"wrestler_units",
+	{
+		wrestlerId: integer("wrestler_id")
+			.notNull()
+			.references(() => wrestlers.id),
+		unitId: text("unit_id")
+			.notNull()
+			.references(() => units.id),
+	},
+	(t) => [primaryKey({ columns: [t.wrestlerId, t.unitId] })],
 );
