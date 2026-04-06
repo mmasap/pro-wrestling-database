@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""NJPW タイトル保持者スクレイパー
+
+Usage:
+    python scripts/njpw_title_holder_scraper.py [--title TITLE_ID] [--db FILE]
+
+Example:
+    python scripts/njpw_title_holder_scraper.py --title iwgp
+"""
+
+import argparse
+import json
+import os
+import sqlite3
+import urllib.request
+from urllib.error import URLError
+
+API_BASE = "https://app.njpw.co.jp/champions/pagination"
+
+DEFAULT_DB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "njpw.db")
+
+# title_id -> API slug のマッピング
+TITLE_SLUG_MAP = {
+    "iwgp":                       "iwgp",
+    "iwgp-world-heavyweight":     "iwgpworldheavyweight",
+    "iwgp-global-heavyweight":    "iwgpglobalheavyweight",
+    "iwgp-jr":                    "iwgpjrheavyweight",
+    "never":                      "never",
+    "strong-openweight":          "strongopenweight",
+    "njpwworld-tv":               "njpwworldtv",
+    "iwgp-womens":                "iwgpwomens",
+    "strong-womens":              "strongwomens",
+    "iwgp-2tag":                  "iwgptag",
+    "iwgp-jr-2tag":               "iwgpjrtag",
+    "strong-openweight-tag-team": "strongopenweighttag",
+    "never-6tag":                 "never6tag",
+    "inter-continental":          "intercontinental",
+    "iwgpus":                     "iwgpus",
+}
+
+
+def fetch_json(url: str) -> dict:
+    try:
+        with urllib.request.urlopen(url) as resp:
+            return json.loads(resp.read().decode())
+    except URLError as e:
+        raise RuntimeError(f"取得失敗: {url} — {e}")
+
+
+def fetch_all_pages(slug: str) -> list:
+    """全ページのpostsを取得して結合して返す (AllCountはページ数)"""
+    all_posts = []
+    page = 1
+    while True:
+        url = f"{API_BASE}/{slug}/{page}.json"
+        print(f"  取得中: {url}")
+        data = fetch_json(url)
+        posts = data.get("posts", [])
+        if not posts:
+            break
+        all_posts.extend(posts)
+        total_pages = data.get("AllCount", 0)
+        if page >= total_pages:
+            break
+        page += 1
+    return all_posts
+
+
+def _parse_match_row(match: dict) -> tuple:
+    finish = match.get("finish")
+    time = match.get("time")
+    date_raw = match.get("date", "")
+    date = date_raw[:10] if date_raw else None
+    stadium_name = match.get("stadium_name")
+    result_url = match.get("result_url")
+    opponents_raw = match.get("opponents") or []
+    opponents = json.dumps([o["name"] for o in opponents_raw], ensure_ascii=False)
+    return finish, time, date, stadium_name, result_url, opponents
+
+
+def upsert_title_holder(conn: sqlite3.Connection, title_id: str, post: dict) -> None:
+    era_title = post["era_title"]
+    profiles = post.get("profiles") or []
+    wrestler_id = profiles[0]["post_id"] if profiles and profiles[0].get("post_id") else None
+
+    conn.execute(
+        "INSERT OR REPLACE INTO title_holders (title_id, era_title, wrestler_id) VALUES (?, ?, ?)",
+        (title_id, era_title, wrestler_id),
+    )
+
+    # 既存の試合データを削除して再投入
+    conn.execute(
+        "DELETE FROM title_holder_matches WHERE title_id = ? AND era_title = ?",
+        (title_id, era_title),
+    )
+
+    all_matches = [post.get("title_match") or {}] + (post.get("defenses") or [])
+    for match in all_matches:
+        if not match:
+            continue
+        finish, time, date, stadium_name, result_url, opponents = _parse_match_row(match)
+        conn.execute(
+            """INSERT INTO title_holder_matches
+               (title_id, era_title, finish, time, date, stadium_name, result_url, opponents)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (title_id, era_title, finish, time, date, stadium_name, result_url, opponents),
+        )
+
+
+def process_title(title_id: str, conn: sqlite3.Connection) -> None:
+    slug = TITLE_SLUG_MAP.get(title_id)
+    if not slug:
+        print(f"[ERROR] title_id '{title_id}' のAPIスラッグが見つかりません")
+        return
+
+    print(f"\n[{title_id}] タイトル保持者情報を取得中...")
+    posts = fetch_all_pages(slug)
+    print(f"  取得件数: {len(posts)} エラ")
+
+    for post in posts:
+        era = post["era_title"]
+        profiles = post.get("profiles") or []
+        champion_name = profiles[0]["name"] if profiles else "不明"
+        print(f"  第{era}代: {champion_name}")
+        upsert_title_holder(conn, title_id, post)
+
+    conn.commit()
+    print(f"  保存完了: {len(posts)} エラ")
+
+
+def apply_migrations(conn: sqlite3.Connection) -> None:
+    """title_holders / title_holder_matches テーブルがなければ作成する"""
+    conn.execute("DROP TABLE IF EXISTS title_holder_matches")
+    conn.execute("DROP TABLE IF EXISTS title_holders")
+    conn.execute("DROP TABLE IF EXISTS title_reign_defenses")
+    conn.execute("DROP TABLE IF EXISTS title_reigns")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS title_holders (
+            title_id TEXT NOT NULL,
+            era_title INTEGER NOT NULL,
+            wrestler_id INTEGER,
+            PRIMARY KEY (title_id, era_title),
+            FOREIGN KEY (title_id) REFERENCES titles(id),
+            FOREIGN KEY (wrestler_id) REFERENCES wrestlers(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS title_holder_matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title_id TEXT NOT NULL,
+            era_title INTEGER NOT NULL,
+            finish TEXT,
+            time TEXT,
+            date TEXT,
+            stadium_name TEXT,
+            result_url TEXT,
+            opponents TEXT
+        )
+    """)
+    conn.commit()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="NJPW タイトル保持者情報をDBに保存")
+    parser.add_argument(
+        "--title",
+        default="iwgp",
+        choices=list(TITLE_SLUG_MAP.keys()),
+        help="対象タイトルID (デフォルト: iwgp)",
+    )
+    parser.add_argument("--db", default=DEFAULT_DB, help=f"SQLiteファイルパス (デフォルト: {DEFAULT_DB})")
+    args = parser.parse_args()
+
+    with sqlite3.connect(args.db) as conn:
+        apply_migrations(conn)
+        process_title(args.title, conn)
+
+    print(f"\nDB保存完了: {args.db}")
+
+
+if __name__ == "__main__":
+    main()

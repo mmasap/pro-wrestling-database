@@ -43,6 +43,27 @@ CREATE TABLE `organizations` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `organizations_name_unique` ON `organizations` (`name`);--> statement-breakpoint
+CREATE TABLE `title_holder_matches` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`title_id` text NOT NULL,
+	`era_title` integer NOT NULL,
+	`finish` text,
+	`time` text,
+	`date` text,
+	`stadium_name` text,
+	`result_url` text,
+	`opponents` text
+);
+--> statement-breakpoint
+CREATE TABLE `title_holders` (
+	`title_id` text NOT NULL,
+	`era_title` integer NOT NULL,
+	`wrestler_id` integer,
+	PRIMARY KEY(`title_id`, `era_title`),
+	FOREIGN KEY (`title_id`) REFERENCES `titles`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`wrestler_id`) REFERENCES `wrestlers`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `titles` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,

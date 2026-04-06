@@ -92,3 +92,27 @@ export const wrestlerUnits = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.wrestlerId, t.unitId] })],
 );
+
+export const titleHolders = sqliteTable(
+	"title_holders",
+	{
+		titleId: text("title_id")
+			.notNull()
+			.references(() => titles.id),
+		eraTitle: integer("era_title").notNull(),
+		wrestlerId: integer("wrestler_id").references(() => wrestlers.id),
+	},
+	(t) => [primaryKey({ columns: [t.titleId, t.eraTitle] })],
+);
+
+export const titleHolderMatches = sqliteTable("title_holder_matches", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	titleId: text("title_id").notNull(),
+	eraTitle: integer("era_title").notNull(),
+	finish: text("finish"),
+	time: text("time"),
+	date: text("date"),
+	stadiumName: text("stadium_name"),
+	resultUrl: text("result_url"),
+	opponents: text("opponents"),
+});
