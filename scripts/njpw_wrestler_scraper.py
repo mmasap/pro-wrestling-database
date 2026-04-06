@@ -68,11 +68,20 @@ def upsert_wrestler(conn: sqlite3.Connection, wrestler: dict, organization_id: s
         ),
     )
     conn.execute("DELETE FROM wrestler_units WHERE wrestler_id = ?", (wrestler["id"],))
-    unit_slug = wrestler.get("unit") or "njpw"
-    conn.execute(
-        "INSERT OR IGNORE INTO wrestler_units (wrestler_id, unit_id) VALUES (?, ?)",
-        (wrestler["id"], unit_slug),
-    )
+    unit_slug = wrestler.get("unit")
+    if unit_slug:
+        try:
+            conn.execute(
+                "INSERT INTO wrestler_units (wrestler_id, unit_id) VALUES (?, ?)",
+                (wrestler["id"], unit_slug),
+            )
+        except sqlite3.IntegrityError:
+            unit_slug = None
+    if not unit_slug:
+        conn.execute(
+            "INSERT OR IGNORE INTO wrestler_units (wrestler_id, unit_id) VALUES (?, ?)",
+            (wrestler["id"], "njpw"),
+        )
 
 
 def main() -> None:
@@ -85,6 +94,7 @@ def main() -> None:
     print(f"取得件数: {len(wrestlers_list)}")
 
     with sqlite3.connect(args.db) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
         organization_id = str(conn.execute(
             "SELECT id FROM organizations WHERE name = '新日本プロレス'"
         ).fetchone()[0])
