@@ -78,10 +78,26 @@ def _parse_match_row(match: dict) -> tuple:
     return finish, time, date, stadium_name, result_url, opponents
 
 
+def ensure_wrestler(conn: sqlite3.Connection, profile: dict) -> None:
+    """wrestlers テーブルに存在しなければ登録する"""
+    wrestler_id = profile.get("post_id")
+    name = profile.get("name") or ""
+    if not wrestler_id:
+        return
+    conn.execute(
+        """INSERT OR IGNORE INTO wrestlers (id, organization_id, name, name_kana)
+           VALUES (?, 'njpw', ?, '')""",
+        (wrestler_id, name),
+    )
+
+
 def upsert_title_holder(conn: sqlite3.Connection, title_id: str, post: dict) -> None:
     era_title = post["era_title"]
     profiles = post.get("profiles") or []
-    wrestler_id = profiles[0]["post_id"] if profiles and profiles[0].get("post_id") else None
+    wrestler_id = None
+    if profiles and profiles[0].get("post_id"):
+        wrestler_id = profiles[0]["post_id"]
+        ensure_wrestler(conn, profiles[0])
 
     conn.execute(
         "INSERT OR REPLACE INTO title_holders (title_id, era_title, wrestler_id) VALUES (?, ?, ?)",
