@@ -75,15 +75,25 @@ def ensure_wrestler(conn: sqlite3.Connection, profile: dict) -> None:
 def upsert_title_holder(conn: sqlite3.Connection, title_id: str, post: dict) -> None:
     era_title = post["era_title"]
     profiles = post.get("profiles") or []
-    wrestler_id = None
-    if profiles and profiles[0].get("post_id"):
-        wrestler_id = profiles[0]["post_id"]
-        ensure_wrestler(conn, profiles[0])
 
     conn.execute(
-        "INSERT OR REPLACE INTO title_holders (title_id, era_title, wrestler_id) VALUES (?, ?, ?)",
-        (title_id, era_title, wrestler_id),
+        "INSERT OR REPLACE INTO title_holders (title_id, era_title) VALUES (?, ?)",
+        (title_id, era_title),
     )
+
+    # 既存のチャンピオンデータを削除して再投入
+    conn.execute(
+        "DELETE FROM title_holder_wrestlers WHERE title_id = ? AND era_title = ?",
+        (title_id, era_title),
+    )
+    for profile in profiles:
+        wrestler_id = profile.get("post_id")
+        if wrestler_id:
+            ensure_wrestler(conn, profile)
+            conn.execute(
+                "INSERT OR IGNORE INTO title_holder_wrestlers (title_id, era_title, wrestler_id) VALUES (?, ?, ?)",
+                (title_id, era_title, wrestler_id),
+            )
 
     # 既存の試合データを削除して再投入
     conn.execute(
@@ -112,8 +122,8 @@ def process_title(title_id: str, conn: sqlite3.Connection) -> None:
     for post in posts:
         era = post["era_title"]
         profiles = post.get("profiles") or []
-        champion_name = profiles[0]["name"] if profiles else "不明"
-        print(f"  第{era}代: {champion_name}")
+        champion_names = " & ".join(p["name"] for p in profiles if p.get("name")) or "不明"
+        print(f"  第{era}代: {champion_names}")
         upsert_title_holder(conn, title_id, post)
 
     conn.commit()
@@ -121,8 +131,9 @@ def process_title(title_id: str, conn: sqlite3.Connection) -> None:
 
 
 def apply_migrations(conn: sqlite3.Connection) -> None:
-    """title_holders / title_holder_matches テーブルがなければ作成する"""
+    """title_holders / title_holder_wrestlers / title_holder_matches テーブルを作成する"""
     conn.execute("DROP TABLE IF EXISTS title_holder_matches")
+    conn.execute("DROP TABLE IF EXISTS title_holder_wrestlers")
     conn.execute("DROP TABLE IF EXISTS title_holders")
     conn.execute("DROP TABLE IF EXISTS title_reign_defenses")
     conn.execute("DROP TABLE IF EXISTS title_reigns")
@@ -130,8 +141,16 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS title_holders (
             title_id TEXT NOT NULL,
             era_title INTEGER NOT NULL,
-            wrestler_id INTEGER,
             PRIMARY KEY (title_id, era_title),
+            FOREIGN KEY (title_id) REFERENCES titles(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS title_holder_wrestlers (
+            title_id TEXT NOT NULL,
+            era_title INTEGER NOT NULL,
+            wrestler_id INTEGER NOT NULL,
+            PRIMARY KEY (title_id, era_title, wrestler_id),
             FOREIGN KEY (title_id) REFERENCES titles(id),
             FOREIGN KEY (wrestler_id) REFERENCES wrestlers(id)
         )

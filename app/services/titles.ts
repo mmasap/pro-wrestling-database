@@ -1,11 +1,9 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
 	organizations,
 	titleHolderMatches,
-	titleHolders,
 	titles,
-	wrestlers,
 } from "../../db/schema";
 
 export async function getOrganizations() {
@@ -43,17 +41,15 @@ export async function getTitleHistory(titleId: string) {
 			finish: titleHolderMatches.finish,
 			time: titleHolderMatches.time,
 			opponents: titleHolderMatches.opponents,
-			holderName: wrestlers.name,
+			holderName: sql<string | null>`(
+				SELECT GROUP_CONCAT(w.name, ' & ')
+				FROM title_holder_wrestlers thw
+				JOIN wrestlers w ON w.id = thw.wrestler_id
+				WHERE thw.title_id = title_holder_matches.title_id
+				  AND thw.era_title = title_holder_matches.era_title
+			)`,
 		})
 		.from(titleHolderMatches)
-		.leftJoin(
-			titleHolders,
-			and(
-				eq(titleHolders.titleId, titleHolderMatches.titleId),
-				eq(titleHolders.eraTitle, titleHolderMatches.eraTitle),
-			),
-		)
-		.leftJoin(wrestlers, eq(wrestlers.id, titleHolders.wrestlerId))
 		.where(eq(titleHolderMatches.titleId, titleId))
 		.orderBy(asc(titleHolderMatches.date), asc(titleHolderMatches.id));
 
