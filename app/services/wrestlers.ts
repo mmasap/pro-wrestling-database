@@ -1,6 +1,13 @@
 import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { db } from "../../db";
-import { events, matchParticipants, matchTitles, matches, titles, wrestlers } from "../../db/schema";
+import {
+	events,
+	matchParticipants,
+	matchTitles,
+	matches,
+	titles,
+	wrestlers,
+} from "../../db/schema";
 
 export type MatchType = "all" | "singles" | "title";
 
@@ -87,10 +94,12 @@ export async function getWrestlerRecord(
 					})
 					.from(matchParticipants)
 					.innerJoin(wrestlers, eq(wrestlers.id, matchParticipants.wrestlerId))
-					.where(and(
-						inArray(matchParticipants.matchId, matchIds),
-						ne(matchParticipants.wrestlerId, wrestlerId),
-					))
+					.where(
+						and(
+							inArray(matchParticipants.matchId, matchIds),
+							ne(matchParticipants.wrestlerId, wrestlerId),
+						),
+					)
 			: Promise.resolve([]),
 	]);
 
@@ -119,8 +128,8 @@ export async function getWrestlerRecord(
 			opponentTeams: new Map(),
 			teamWon: !!row.isWinner,
 			teamLost: !!row.isLoser,
-			fallWinner: row.isWinner ? wrestler?.name ?? null : null,
-			fallLoser: row.isLoser ? wrestler?.name ?? null : null,
+			fallWinner: row.isWinner ? (wrestler?.name ?? null) : null,
+			fallLoser: row.isLoser ? (wrestler?.name ?? null) : null,
 		});
 	}
 
@@ -131,8 +140,14 @@ export async function getWrestlerRecord(
 		const team = p.team as number;
 		if (map.myTeam !== null && p.team === map.myTeam) {
 			map.partners.push(p.wrestlerName as string);
-			if (p.isWinner) { map.teamWon = true; map.fallWinner = p.wrestlerName as string; }
-			if (p.isLoser) { map.teamLost = true; map.fallLoser = p.wrestlerName as string; }
+			if (p.isWinner) {
+				map.teamWon = true;
+				map.fallWinner = p.wrestlerName as string;
+			}
+			if (p.isLoser) {
+				map.teamLost = true;
+				map.fallLoser = p.wrestlerName as string;
+			}
 		} else {
 			if (!map.opponentTeams.has(team)) map.opponentTeams.set(team, []);
 			map.opponentTeams.get(team)?.push(p.wrestlerName as string);

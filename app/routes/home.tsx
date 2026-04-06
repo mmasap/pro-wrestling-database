@@ -176,7 +176,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 										<TableCell className="whitespace-nowrap">
 											{m.date}
 										</TableCell>
-										<TableCell className="max-w-48 whitespace-normal">{m.eventName}</TableCell>
+										<TableCell className="max-w-48 whitespace-normal">
+											{m.eventName}
+										</TableCell>
 										<TableCell className="text-center">
 											<Badge
 												variant={badgeVariant}

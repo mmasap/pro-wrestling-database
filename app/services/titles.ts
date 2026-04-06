@@ -1,11 +1,27 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { titleHolderMatches, titleHolders, titles, wrestlers } from "../../db/schema";
+import {
+	organizations,
+	titleHolderMatches,
+	titleHolders,
+	titles,
+	wrestlers,
+} from "../../db/schema";
 
-export async function getTitles() {
+export async function getOrganizations() {
+	return db
+		.select({ id: organizations.id, name: organizations.name })
+		.from(organizations)
+		.orderBy(asc(organizations.name));
+}
+
+export async function getTitles(organizationId?: string) {
 	return db
 		.select({ id: titles.id, name: titles.name })
 		.from(titles)
+		.where(
+			organizationId ? eq(titles.organizationId, organizationId) : undefined,
+		)
 		.orderBy(sql`${titles.displayOrder} IS NULL`, asc(titles.displayOrder));
 }
 
