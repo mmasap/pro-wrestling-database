@@ -44,9 +44,9 @@ def fetch_json(url: str) -> dict:
 
 
 
-def upsert_wrestler(conn: sqlite3.Connection, wrestler_id: int, name: str, organization_id: int) -> None:
+def insert_wrestler_if_not_exists(conn: sqlite3.Connection, wrestler_id: int, name: str, organization_id: int) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO wrestlers (id, name, organization_id) VALUES (?, ?, ?)",
+        "INSERT OR IGNORE INTO wrestlers (id, name, organization_id) VALUES (?, ?, ?)",
         (wrestler_id, name, organization_id),
     )
 
@@ -237,7 +237,7 @@ def process_event(event_id: str, conn: sqlite3.Connection, organization_id: int)
         losers = [p for p in match["participants"] if not p["is_winner"]]
 
         for p in match["participants"]:
-            upsert_wrestler(conn, p["id"], p["name"], organization_id)
+            insert_wrestler_if_not_exists(conn, p["id"], p["name"], organization_id)
             upsert_match_participant(conn, match["id"], p["id"], p["team"], p["is_winner"], p["is_loser"])
 
         winner_str = _format_team(winners) if winners else "?"
