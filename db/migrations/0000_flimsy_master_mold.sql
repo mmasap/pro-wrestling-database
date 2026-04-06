@@ -68,6 +68,7 @@ CREATE TABLE `titles` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`name` text NOT NULL,
+	`display_order` integer,
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint

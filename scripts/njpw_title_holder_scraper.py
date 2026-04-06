@@ -19,25 +19,6 @@ API_BASE = "https://app.njpw.co.jp/champions/pagination"
 
 DEFAULT_DB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "njpw.db")
 
-# title_id -> API slug のマッピング
-TITLE_SLUG_MAP = {
-    "iwgp":                       "iwgp",
-    "iwgp-world-heavyweight":     "iwgpworldheavyweight",
-    "iwgp-global-heavyweight":    "iwgpglobalheavyweight",
-    "iwgp-jr":                    "iwgpjrheavyweight",
-    "never":                      "never",
-    "strong-openweight":          "strongopenweight",
-    "njpwworld-tv":               "njpwworldtv",
-    "iwgp-womens":                "iwgpwomens",
-    "strong-womens":              "strongwomens",
-    "iwgp-2tag":                  "iwgptag",
-    "iwgp-jr-2tag":               "iwgpjrtag",
-    "strong-openweight-tag-team": "strongopenweighttag",
-    "never-6tag":                 "never6tag",
-    "inter-continental":          "intercontinental",
-    "iwgpus":                     "iwgpus",
-}
-
 
 def fetch_json(url: str) -> dict:
     try:
@@ -94,15 +75,25 @@ def ensure_wrestler(conn: sqlite3.Connection, profile: dict) -> None:
 def upsert_title_holder(conn: sqlite3.Connection, title_id: str, post: dict) -> None:
     era_title = post["era_title"]
     profiles = post.get("profiles") or []
-    wrestler_id = None
-    if profiles and profiles[0].get("post_id"):
-        wrestler_id = profiles[0]["post_id"]
-        ensure_wrestler(conn, profiles[0])
 
     conn.execute(
-        "INSERT OR REPLACE INTO title_holders (title_id, era_title, wrestler_id) VALUES (?, ?, ?)",
-        (title_id, era_title, wrestler_id),
+        "INSERT OR REPLACE INTO title_holders (title_id, era_title) VALUES (?, ?)",
+        (title_id, era_title),
     )
+
+    # 既存のチャンピオンデータを削除して再投入
+    conn.execute(
+        "DELETE FROM title_holder_wrestlers WHERE title_id = ? AND era_title = ?",
+        (title_id, era_title),
+    )
+    for profile in profiles:
+        wrestler_id = profile.get("post_id")
+        if wrestler_id:
+            ensure_wrestler(conn, profile)
+            conn.execute(
+                "INSERT OR IGNORE INTO title_holder_wrestlers (title_id, era_title, wrestler_id) VALUES (?, ?, ?)",
+                (title_id, era_title, wrestler_id),
+            )
 
     # 既存の試合データを削除して再投入
     conn.execute(
@@ -124,20 +115,15 @@ def upsert_title_holder(conn: sqlite3.Connection, title_id: str, post: dict) -> 
 
 
 def process_title(title_id: str, conn: sqlite3.Connection) -> None:
-    slug = TITLE_SLUG_MAP.get(title_id)
-    if not slug:
-        print(f"[ERROR] title_id '{title_id}' のAPIスラッグが見つかりません")
-        return
-
     print(f"\n[{title_id}] タイトル保持者情報を取得中...")
-    posts = fetch_all_pages(slug)
+    posts = fetch_all_pages(title_id)
     print(f"  取得件数: {len(posts)} エラ")
 
     for post in posts:
         era = post["era_title"]
         profiles = post.get("profiles") or []
-        champion_name = profiles[0]["name"] if profiles else "不明"
-        print(f"  第{era}代: {champion_name}")
+        champion_names = " & ".join(p["name"] for p in profiles if p.get("name")) or "不明"
+        print(f"  第{era}代: {champion_names}")
         upsert_title_holder(conn, title_id, post)
 
     conn.commit()
@@ -145,8 +131,9 @@ def process_title(title_id: str, conn: sqlite3.Connection) -> None:
 
 
 def apply_migrations(conn: sqlite3.Connection) -> None:
-    """title_holders / title_holder_matches テーブルがなければ作成する"""
+    """title_holders / title_holder_wrestlers / title_holder_matches テーブルを作成する"""
     conn.execute("DROP TABLE IF EXISTS title_holder_matches")
+    conn.execute("DROP TABLE IF EXISTS title_holder_wrestlers")
     conn.execute("DROP TABLE IF EXISTS title_holders")
     conn.execute("DROP TABLE IF EXISTS title_reign_defenses")
     conn.execute("DROP TABLE IF EXISTS title_reigns")
@@ -154,8 +141,16 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS title_holders (
             title_id TEXT NOT NULL,
             era_title INTEGER NOT NULL,
-            wrestler_id INTEGER,
             PRIMARY KEY (title_id, era_title),
+            FOREIGN KEY (title_id) REFERENCES titles(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS title_holder_wrestlers (
+            title_id TEXT NOT NULL,
+            era_title INTEGER NOT NULL,
+            wrestler_id INTEGER NOT NULL,
+            PRIMARY KEY (title_id, era_title, wrestler_id),
             FOREIGN KEY (title_id) REFERENCES titles(id),
             FOREIGN KEY (wrestler_id) REFERENCES wrestlers(id)
         )
@@ -176,20 +171,37 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def get_njpw_title_ids(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        "SELECT id FROM titles WHERE organization_id = 'njpw' ORDER BY display_order IS NULL, display_order"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="NJPW タイトル保持者情報をDBに保存")
     parser.add_argument(
         "--title",
-        default="iwgp",
-        choices=list(TITLE_SLUG_MAP.keys()),
-        help="対象タイトルID (デフォルト: iwgp)",
+        default=None,
+        help="対象タイトルID (省略時はtitlesテーブルのNJPW全タイトルを処理)",
     )
     parser.add_argument("--db", default=DEFAULT_DB, help=f"SQLiteファイルパス (デフォルト: {DEFAULT_DB})")
     args = parser.parse_args()
 
     with sqlite3.connect(args.db) as conn:
         apply_migrations(conn)
-        process_title(args.title, conn)
+
+        if args.title:
+            title_ids = [args.title]
+        else:
+            title_ids = get_njpw_title_ids(conn)
+            if not title_ids:
+                print("[ERROR] titlesテーブルにNJPWのタイトルが登録されていません")
+                return
+            print(f"対象タイトル ({len(title_ids)} 件): {', '.join(title_ids)}")
+
+        for title_id in title_ids:
+            process_title(title_id, conn)
 
     print(f"\nDB保存完了: {args.db}")
 

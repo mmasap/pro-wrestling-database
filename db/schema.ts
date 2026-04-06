@@ -43,6 +43,7 @@ export const titles = sqliteTable("titles", {
 		.notNull()
 		.references(() => organizations.id),
 	name: text("name").notNull().unique(),
+	displayOrder: integer("display_order"),
 });
 
 export const matches = sqliteTable("matches", {
@@ -100,9 +101,22 @@ export const titleHolders = sqliteTable(
 			.notNull()
 			.references(() => titles.id),
 		eraTitle: integer("era_title").notNull(),
-		wrestlerId: integer("wrestler_id").references(() => wrestlers.id),
 	},
 	(t) => [primaryKey({ columns: [t.titleId, t.eraTitle] })],
+);
+
+export const titleHolderWrestlers = sqliteTable(
+	"title_holder_wrestlers",
+	{
+		titleId: text("title_id")
+			.notNull()
+			.references(() => titles.id),
+		eraTitle: integer("era_title").notNull(),
+		wrestlerId: integer("wrestler_id")
+			.notNull()
+			.references(() => wrestlers.id),
+	},
+	(t) => [primaryKey({ columns: [t.titleId, t.eraTitle, t.wrestlerId] })],
 );
 
 export const titleHolderMatches = sqliteTable("title_holder_matches", {
