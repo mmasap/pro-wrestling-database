@@ -43,6 +43,7 @@ export const titles = sqliteTable("titles", {
 		.notNull()
 		.references(() => organizations.id),
 	name: text("name").notNull().unique(),
+	displayOrder: integer("display_order"),
 });
 
 export const matches = sqliteTable("matches", {

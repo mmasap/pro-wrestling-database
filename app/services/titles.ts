@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { titleHolderMatches, titleHolders, titles, wrestlers } from "../../db/schema";
 
@@ -6,7 +6,7 @@ export async function getTitles() {
 	return db
 		.select({ id: titles.id, name: titles.name })
 		.from(titles)
-		.orderBy(titles.name);
+		.orderBy(sql`${titles.displayOrder} IS NULL`, asc(titles.displayOrder));
 }
 
 export async function getTitleHistory(titleId: string) {
