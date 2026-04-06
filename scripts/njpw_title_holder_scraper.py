@@ -19,25 +19,6 @@ API_BASE = "https://app.njpw.co.jp/champions/pagination"
 
 DEFAULT_DB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "njpw.db")
 
-# title_id -> API slug のマッピング
-TITLE_SLUG_MAP = {
-    "iwgp":                       "iwgp",
-    "iwgp-world-heavyweight":     "iwgpworldheavyweight",
-    "iwgp-global-heavyweight":    "iwgpglobalheavyweight",
-    "iwgp-jr":                    "iwgpjrheavyweight",
-    "never":                      "never",
-    "strong-openweight":          "strongopenweight",
-    "njpwworld-tv":               "njpwworldtv",
-    "iwgp-womens":                "iwgpwomens",
-    "strong-womens":              "strongwomens",
-    "iwgp-2tag":                  "iwgptag",
-    "iwgp-jr-2tag":               "iwgpjrtag",
-    "strong-openweight-tag-team": "strongopenweighttag",
-    "never-6tag":                 "never6tag",
-    "inter-continental":          "intercontinental",
-    "iwgpus":                     "iwgpus",
-}
-
 
 def fetch_json(url: str) -> dict:
     try:
@@ -124,13 +105,8 @@ def upsert_title_holder(conn: sqlite3.Connection, title_id: str, post: dict) -> 
 
 
 def process_title(title_id: str, conn: sqlite3.Connection) -> None:
-    slug = TITLE_SLUG_MAP.get(title_id)
-    if not slug:
-        print(f"[ERROR] title_id '{title_id}' のAPIスラッグが見つかりません")
-        return
-
     print(f"\n[{title_id}] タイトル保持者情報を取得中...")
-    posts = fetch_all_pages(slug)
+    posts = fetch_all_pages(title_id)
     print(f"  取得件数: {len(posts)} エラ")
 
     for post in posts:
@@ -176,20 +152,37 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def get_njpw_title_ids(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        "SELECT id FROM titles WHERE organization_id = 'njpw' ORDER BY display_order IS NULL, display_order"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="NJPW タイトル保持者情報をDBに保存")
     parser.add_argument(
         "--title",
-        default="iwgp",
-        choices=list(TITLE_SLUG_MAP.keys()),
-        help="対象タイトルID (デフォルト: iwgp)",
+        default=None,
+        help="対象タイトルID (省略時はtitlesテーブルのNJPW全タイトルを処理)",
     )
     parser.add_argument("--db", default=DEFAULT_DB, help=f"SQLiteファイルパス (デフォルト: {DEFAULT_DB})")
     args = parser.parse_args()
 
     with sqlite3.connect(args.db) as conn:
         apply_migrations(conn)
-        process_title(args.title, conn)
+
+        if args.title:
+            title_ids = [args.title]
+        else:
+            title_ids = get_njpw_title_ids(conn)
+            if not title_ids:
+                print("[ERROR] titlesテーブルにNJPWのタイトルが登録されていません")
+                return
+            print(f"対象タイトル ({len(title_ids)} 件): {', '.join(title_ids)}")
+
+        for title_id in title_ids:
+            process_title(title_id, conn)
 
     print(f"\nDB保存完了: {args.db}")
 
