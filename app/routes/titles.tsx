@@ -64,7 +64,7 @@ export default function Titles({ loaderData }: Route.ComponentProps) {
 					acc[m.eraTitle].matches.push(m);
 					return acc;
 				}, {}),
-		  ).sort((a, b) => a.eraTitle - b.eraTitle)
+		  ).sort((a, b) => b.eraTitle - a.eraTitle)
 		: [];
 
 	return (
